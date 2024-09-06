@@ -43,9 +43,9 @@ def translate_large_text(text, model, chunk_size=5):
         translated_chunks.append(translated_chunk)
         
         print(f"\nChunk {i+1}/{len(chunks)} ({len(chunk)} sentences):")
-        print(f"Original: {chunk_text[:100]}..." if len(chunk_text) > 100 else f"Original: {chunk_text}")
-        print(f"Translated: {translated_chunk[:100]}..." if len(translated_chunk) > 100 else f"Translated: {translated_chunk}")
-        print("-" * 50)
+        print(f"Original: {chunk_text}")
+        print(f"Translated: {translated_chunk}")
+        print("-" * 80)
     
     return ' '.join(translated_chunks)
 
