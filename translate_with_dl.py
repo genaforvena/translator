@@ -1,6 +1,7 @@
 import argparse
 import dl_translate as dlt
 import chardet
+import re
 
 def detect_encoding(file_path):
     with open(file_path, 'rb') as file:
@@ -28,10 +29,25 @@ def read_file_with_encoding(file_path, encoding):
 def initialize_model():
     return dlt.TranslationModel()
 
-def translate_large_text(text, model, chunk_size=500):
-    chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-    translated_chunks = [model.translate(chunk, source="ru", target="en") for chunk in chunks]
-    return " ".join(translated_chunks)
+def split_into_sentences(text):
+    return re.split(r'(?<=[.!?])\s+', text)
+
+def translate_large_text(text, model, chunk_size=5):
+    sentences = split_into_sentences(text)
+    chunks = [sentences[i:i+chunk_size] for i in range(0, len(sentences), chunk_size)]
+    
+    translated_chunks = []
+    for i, chunk in enumerate(chunks):
+        chunk_text = ' '.join(chunk)
+        translated_chunk = model.translate(chunk_text, source="ru", target="en")
+        translated_chunks.append(translated_chunk)
+        
+        print(f"\nChunk {i+1}/{len(chunks)} ({len(chunk)} sentences):")
+        print(f"Original: {chunk_text[:100]}..." if len(chunk_text) > 100 else f"Original: {chunk_text}")
+        print(f"Translated: {translated_chunk[:100]}..." if len(translated_chunk) > 100 else f"Translated: {translated_chunk}")
+        print("-" * 50)
+    
+    return ' '.join(translated_chunks)
 
 def main():
     parser = argparse.ArgumentParser(description="Translate Russian text file to English")
@@ -44,6 +60,7 @@ def main():
         detected_encoding = detect_encoding(args.input)
         print(f"Detected encoding: {detected_encoding}")
         russian_text = read_file_with_encoding(args.input, detected_encoding)
+        print(f"Input text length: {len(russian_text)} characters")
     except Exception as e:
         print(f"Error reading input file: {e}")
         return
@@ -54,7 +71,8 @@ def main():
         mt_model = initialize_model()
         print("Model initialized. Starting translation...")
         translated_english = translate_large_text(russian_text, mt_model)
-        print("Translation completed.")
+        print("\nTranslation completed.")
+        print(f"Translated text length: {len(translated_english)} characters")
     except Exception as e:
         print(f"Error during translation: {e}")
         return
