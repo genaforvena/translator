@@ -1,7 +1,6 @@
 import argparse
 import dl_translate as dlt
 import chardet
-import re
 
 def detect_encoding(file_path):
     with open(file_path, 'rb') as file:
@@ -29,25 +28,24 @@ def read_file_with_encoding(file_path, encoding):
 def initialize_model():
     return dlt.TranslationModel()
 
-def split_into_sentences(text):
-    return re.split(r'(?<=[.!?])\s+', text)
+def split_into_paragraphs(text):
+    return text.split('\n\n')
 
-def translate_large_text(text, model, chunk_size=5):
-    sentences = split_into_sentences(text)
-    chunks = [sentences[i:i+chunk_size] for i in range(0, len(sentences), chunk_size)]
+def translate_large_text(text, model):
+    paragraphs = split_into_paragraphs(text)
     
-    translated_chunks = []
-    for i, chunk in enumerate(chunks):
-        chunk_text = ' '.join(chunk)
-        translated_chunk = model.translate(chunk_text, source="ru", target="en")
-        translated_chunks.append(translated_chunk)
-        
-        print(f"\nChunk {i+1}/{len(chunks)} ({len(chunk)} sentences):")
-        print(f"Original: {chunk_text}")
-        print(f"Translated: {translated_chunk}")
-        print("-" * 80)
+    translated_paragraphs = []
+    for i, paragraph in enumerate(paragraphs):
+        if paragraph.strip():  # Skip empty paragraphs
+            translated_paragraph = model.translate(paragraph, source="ru", target="en")
+            translated_paragraphs.append(translated_paragraph)
+            
+            print(f"\nParagraph {i+1}/{len(paragraphs)}:")
+            print(f"Original: {paragraph}")
+            print(f"Translated: {translated_paragraph}")
+            print("-" * 80)
     
-    return ' '.join(translated_chunks)
+    return '\n\n'.join(translated_paragraphs)
 
 def main():
     parser = argparse.ArgumentParser(description="Translate Russian text file to English")
