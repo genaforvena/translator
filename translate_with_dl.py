@@ -1,6 +1,16 @@
+#!/usr/bin/env python3
+"""
+Russian to English Translator
+
+This script translates Russian text files to English using the MarianMT model.
+It supports various optional improvements for translation quality.
+
+For full documentation and usage instructions, please refer to the README.md file.
+"""
+
 import argparse
 import torch
-from transformers import MarianMTModel, MarianTokenizer
+from transformers import MarianMTModel, MarianTokenizer, pipeline
 import chardet
 import nltk
 import re
@@ -99,17 +109,46 @@ def translate_with_quality_check(chunk, ru_en_model, ru_en_tokenizer, en_ru_mode
     print("Max retries reached. Returning best attempt.")
     return en_translation
 
-def translate_large_text(text, ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer, use_back_translation):
+def ensemble_translate(chunk, models, tokenizers):
+    """Translate using an ensemble of models."""
+    translations = [translate(chunk, model, tokenizer) for model, tokenizer in zip(models, tokenizers)]
+    return max(set(translations), key=translations.count)  # Return the most common translation
+
+def confidence_score(translation):
+    """Calculate a simple confidence score based on translation length and repetition."""
+    words = translation.split()
+    unique_words = set(words)
+    return len(unique_words) / len(words) if words else 0
+
+def translate_large_text(text, models, tokenizers, args):
     paragraphs = split_into_paragraphs(text)
     
     translated_paragraphs = []
     for i, paragraph in enumerate(paragraphs):
         if paragraph.strip():
             chunks = split_long_paragraph(paragraph)
-            if use_back_translation:
-                translated_chunks = [translate_with_quality_check(chunk, ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer) for chunk in chunks]
-            else:
-                translated_chunks = [translate(chunk, ru_en_model, ru_en_tokenizer) for chunk in chunks]
+            translated_chunks = []
+            
+            for chunk in chunks:
+                if args.use_ensemble:
+                    translation = ensemble_translate(chunk, models, tokenizers)
+                else:
+                    translation = translate(chunk, models[0], tokenizers[0])
+                
+                if args.use_back_translation:
+                    back_translation = translate(translation, models[1], tokenizers[1])
+                    similarity = similarity_score(chunk, back_translation)
+                    if similarity < 0.7:  # Adjust threshold as needed
+                        print(f"Low quality translation detected (similarity: {similarity:.2f}). Retrying...")
+                        continue
+                
+                if args.use_confidence_check:
+                    conf_score = confidence_score(translation)
+                    if conf_score < 0.5:  # Adjust threshold as needed
+                        print(f"Low confidence translation (score: {conf_score:.2f}). Retrying...")
+                        continue
+                
+                translated_chunks.append(translation)
             
             translated_paragraph = ' '.join(translated_chunks)
             translated_paragraphs.append(translated_paragraph)
@@ -126,6 +165,8 @@ def main():
     parser.add_argument("input", help="Path to the input Russian text file")
     parser.add_argument("-o", "--output", help="Path to the output English text file", default="output_english_text.txt")
     parser.add_argument("--use-back-translation", action="store_true", help="Enable back-translation quality check")
+    parser.add_argument("--use-ensemble", action="store_true", help="Enable ensemble translation with multiple models")
+    parser.add_argument("--use-confidence-check", action="store_true", help="Enable confidence score checking")
     args = parser.parse_args()
 
     try:
@@ -135,9 +176,21 @@ def main():
         print(f"Input text length: {len(russian_text)} characters")
 
         print("Initializing translation models...")
-        ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer = initialize_models(args.use_back_translation)
+        models, tokenizers = [], []
+        models.append(MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-ru-en"))
+        tokenizers.append(MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-ru-en"))
+        
+        if args.use_back_translation or args.use_ensemble:
+            models.append(MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-ru"))
+            tokenizers.append(MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru"))
+        
+        if args.use_ensemble:
+            # Add more models for ensemble translation
+            models.append(MarianMTModel.from_pretrained("facebook/wmt19-ru-en"))
+            tokenizers.append(MarianTokenizer.from_pretrained("facebook/wmt19-ru-en"))
+        
         print("Models initialized. Starting translation...")
-        translated_english = translate_large_text(russian_text, ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer, args.use_back_translation)
+        translated_english = translate_large_text(russian_text, models, tokenizers, args)
         print("\nTranslation completed.")
         print(f"Translated text length: {len(translated_english)} characters")
 

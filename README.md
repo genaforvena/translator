@@ -1,6 +1,6 @@
 # Russian to English Translator
 
-This Python script translates Russian text files to English using the MarianMT model. It supports an optional back-translation feature for quality checking.
+This Python script translates Russian text files to English using the MarianMT model. It supports various optional features for improving translation quality.
 
 ## Features
 
@@ -8,6 +8,8 @@ This Python script translates Russian text files to English using the MarianMT m
 - Automatically detects input file encoding
 - Handles large texts by breaking them into paragraphs and chunks
 - Optional back-translation quality check
+- Optional ensemble translation using multiple models
+- Optional confidence score checking
 - Customizable output file naming
 
 ## Requirements
@@ -45,12 +47,29 @@ python russian_to_english_translator.py path/to/input_file.txt
 
 This will create an output file named `output_english_text.txt` in the current directory.
 
-### Translation with Back-translation Quality Check
+### Optional Improvements
 
-To enable the back-translation quality check (slower but potentially higher quality):
+You can enable various improvements to potentially enhance translation quality:
+
+1. Back-translation Quality Check:
+   ```
+   python russian_to_english_translator.py path/to/input_file.txt --use-back-translation
+   ```
+
+2. Ensemble Translation (uses multiple models):
+   ```
+   python russian_to_english_translator.py path/to/input_file.txt --use-ensemble
+   ```
+
+3. Confidence Score Checking:
+   ```
+   python russian_to_english_translator.py path/to/input_file.txt --use-confidence-check
+   ```
+
+You can combine these options as needed:
 
 ```
-python russian_to_english_translator.py path/to/input_file.txt --use-back-translation
+python russian_to_english_translator.py path/to/input_file.txt --use-back-translation --use-ensemble --use-confidence-check
 ```
 
 ### Specifying Output File
@@ -63,26 +82,9 @@ python russian_to_english_translator.py path/to/input_file.txt -o path/to/output
 
 ## Note
 
-The first run may take longer as it downloads the necessary models and NLTK data.
+- The first run may take longer as it downloads the necessary models and NLTK data.
+- Enabling optional improvements will increase translation time and resource usage.
 
 ## Contributing
 
 Contributions to improve the script are welcome. Please feel free to submit a Pull Request.
-
-## License
-
-[Specify your license here, e.g., MIT, GPL, etc.]
-
-## Author
-
-[Your Name]
-
-## Acknowledgements
-
-This project uses the following open-source libraries:
-- PyTorch
-- Transformers
-- NLTK
-- chardet
-
-Special thanks to the developers of these libraries and the MarianMT model.
