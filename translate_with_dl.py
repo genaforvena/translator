@@ -1,7 +1,6 @@
 import argparse
 import dl_translate as dlt
 import chardet
-import re
 from googletrans import Translator
 
 def detect_encoding(file_path):
@@ -77,8 +76,8 @@ def translate_large_text(text, model, fallback_translator):
             translated_paragraphs.append(translated_paragraph)
             
             print(f"\nParagraph {i+1}/{len(paragraphs)}:")
-            print(f"Original: {paragraph[:100]}..." if len(paragraph) > 100 else f"Original: {paragraph}")
-            print(f"Translated: {translated_paragraph[:100]}..." if len(translated_paragraph) > 100 else f"Translated: {translated_paragraph}")
+            print(f"Original: {paragraph}")
+            print(f"Translated: {translated_paragraph}")
             print("-" * 80)
     
     return '\n\n'.join(translated_paragraphs)
