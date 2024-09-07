@@ -130,25 +130,37 @@ def translate_large_text(text, models, tokenizers, args):
             translated_chunks = []
             
             for chunk in chunks:
-                if args.use_ensemble:
-                    translation = ensemble_translate(chunk, models, tokenizers)
-                else:
-                    translation = translate(chunk, models[0], tokenizers[0])
-                
-                if args.use_back_translation:
-                    back_translation = translate(translation, models[1], tokenizers[1])
-                    similarity = similarity_score(chunk, back_translation)
-                    if similarity < 0.7:  # Adjust threshold as needed
-                        print(f"Low quality translation detected (similarity: {similarity:.2f}). Retrying...")
-                        continue
+                best_translation = None
+                best_similarity = 0
+                max_retries = 3
+
+                for attempt in range(max_retries):
+                    if args.use_ensemble:
+                        translation = ensemble_translate(chunk, models, tokenizers)
+                    else:
+                        translation = translate(chunk, models[0], tokenizers[0])
+                    
+                    if args.use_back_translation:
+                        back_translation = translate(translation, models[1], tokenizers[1])
+                        similarity = similarity_score(chunk, back_translation)
+                        if similarity > best_similarity:
+                            best_translation = translation
+                            best_similarity = similarity
+                        
+                        if similarity >= 0.7:  # Adjust threshold as needed
+                            break
+                        else:
+                            print(f"Low quality translation detected (similarity: {similarity:.2f}). Attempt {attempt + 1}/{max_retries}")
+                    else:
+                        best_translation = translation
+                        break
                 
                 if args.use_confidence_check:
-                    conf_score = confidence_score(translation)
+                    conf_score = confidence_score(best_translation)
                     if conf_score < 0.5:  # Adjust threshold as needed
-                        print(f"Low confidence translation (score: {conf_score:.2f}). Retrying...")
-                        continue
+                        print(f"Low confidence translation (score: {conf_score:.2f})")
                 
-                translated_chunks.append(translation)
+                translated_chunks.append(best_translation)
             
             translated_paragraph = ' '.join(translated_chunks)
             translated_paragraphs.append(translated_paragraph)
