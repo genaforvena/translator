@@ -1,0 +1,8 @@
+dl-translate==0.3.1
+chardet
+googletrans==3.1.0a0
+torch
+tqdm
+transformers
+protobuf
+sentencepiece
