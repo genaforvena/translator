@@ -6,3 +6,4 @@ tqdm
 transformers
 protobuf
 sentencepiece
+nltk
