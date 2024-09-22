@@ -10,7 +10,7 @@ For full documentation and usage instructions, please refer to the README.md fil
 
 import argparse
 import torch
-from transformers import MarianMTModel, MarianTokenizer, pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
 import chardet
 import nltk
 import re
@@ -18,6 +18,38 @@ from difflib import SequenceMatcher
 
 # Download necessary NLTK data
 nltk.download('punkt', quiet=True)
+
+def initialize_models(use_back_translation):
+    ru_en_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-ru-en")
+    ru_en_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-ru-en")
+    
+    if use_back_translation:
+        en_ru_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
+        en_ru_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru")
+    else:
+        en_ru_model, en_ru_tokenizer = None, None
+    
+    return ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer
+
+def translate(text, model, tokenizer):
+    try:
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        translated = model.generate(**inputs)
+        translated_text = tokenizer.decode(translated[0], skip_special_tokens=True)
+        return post_process(translated_text)
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return ""
+
+def translate(text, model, tokenizer):
+    try:
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        translated = model.generate(**inputs)
+        translated_text = tokenizer.decode(translated[0], skip_special_tokens=True)
+        return post_process(translated_text)
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return ""
 
 def detect_encoding(file_path):
     with open(file_path, 'rb') as file:
@@ -81,12 +113,6 @@ def post_process(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def translate(text, model, tokenizer):
-    inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-    translated = model.generate(**inputs)
-    translated_text = tokenizer.decode(translated[0], skip_special_tokens=True)
-    return post_process(translated_text)
-
 def similarity_score(text1, text2):
     return SequenceMatcher(None, text1, text2).ratio()
 
@@ -120,7 +146,7 @@ def confidence_score(translation):
     unique_words = set(words)
     return len(unique_words) / len(words) if words else 0
 
-def translate_large_text(text, models, tokenizers, args):
+def translate_large_text(text, ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer, args):
     paragraphs = split_into_paragraphs(text)
     
     translated_paragraphs = []
@@ -130,44 +156,30 @@ def translate_large_text(text, models, tokenizers, args):
             translated_chunks = []
             
             for chunk in chunks:
-                best_translation = None
-                best_similarity = 0
-                max_retries = 3
-
-                for attempt in range(max_retries):
-                    if args.use_ensemble:
-                        translation = ensemble_translate(chunk, models, tokenizers)
-                    else:
-                        translation = translate(chunk, models[0], tokenizers[0])
-                    
-                    if args.use_back_translation:
-                        back_translation = translate(translation, models[1], tokenizers[1])
+                translation = translate(chunk, ru_en_model, ru_en_tokenizer)
+                
+                if translation:
+                    if args.use_back_translation and en_ru_model and en_ru_tokenizer:
+                        back_translation = translate(translation, en_ru_model, en_ru_tokenizer)
                         similarity = similarity_score(chunk, back_translation)
-                        if similarity > best_similarity:
-                            best_translation = translation
-                            best_similarity = similarity
-                        
-                        if similarity >= 0.7:  # Adjust threshold as needed
-                            break
-                        else:
-                            print(f"Low quality translation detected (similarity: {similarity:.2f}). Attempt {attempt + 1}/{max_retries}")
-                    else:
-                        best_translation = translation
-                        break
-                
-                if args.use_confidence_check:
-                    conf_score = confidence_score(best_translation)
-                    if conf_score < 0.5:  # Adjust threshold as needed
-                        print(f"Low confidence translation (score: {conf_score:.2f})")
-                
-                translated_chunks.append(best_translation)
+                        if similarity < 0.7:
+                            print(f"Low quality translation detected (similarity: {similarity:.2f})")
+                    
+                    if args.use_confidence_check:
+                        conf_score = confidence_score(translation)
+                        if conf_score < 0.5:
+                            print(f"Low confidence translation (score: {conf_score:.2f})")
+                    
+                    translated_chunks.append(translation)
+                else:
+                    print(f"Warning: Failed to translate chunk: {chunk[:50]}...")
             
             translated_paragraph = ' '.join(translated_chunks)
             translated_paragraphs.append(translated_paragraph)
             
             print(f"\nParagraph {i+1}/{len(paragraphs)}:")
-            print(f"Original: {paragraph}")
-            print(f"Translated: {translated_paragraph}")
+            print(f"Original: {paragraph[:100]}...")
+            print(f"Translated: {translated_paragraph[:100]}...")
             print("-" * 80)
     
     return '\n\n'.join(translated_paragraphs)
@@ -177,7 +189,6 @@ def main():
     parser.add_argument("input", help="Path to the input Russian text file")
     parser.add_argument("-o", "--output", help="Path to the output English text file", default="output_english_text.txt")
     parser.add_argument("--use-back-translation", action="store_true", help="Enable back-translation quality check")
-    parser.add_argument("--use-ensemble", action="store_true", help="Enable ensemble translation with multiple models")
     parser.add_argument("--use-confidence-check", action="store_true", help="Enable confidence score checking")
     args = parser.parse_args()
 
@@ -188,21 +199,10 @@ def main():
         print(f"Input text length: {len(russian_text)} characters")
 
         print("Initializing translation models...")
-        models, tokenizers = [], []
-        models.append(MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-ru-en"))
-        tokenizers.append(MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-ru-en"))
-        
-        if args.use_back_translation or args.use_ensemble:
-            models.append(MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-ru"))
-            tokenizers.append(MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-ru"))
-        
-        if args.use_ensemble:
-            # Add more models for ensemble translation
-            models.append(MarianMTModel.from_pretrained("facebook/wmt19-ru-en"))
-            tokenizers.append(MarianTokenizer.from_pretrained("facebook/wmt19-ru-en"))
+        ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer = initialize_models(args.use_back_translation)
         
         print("Models initialized. Starting translation...")
-        translated_english = translate_large_text(russian_text, models, tokenizers, args)
+        translated_english = translate_large_text(russian_text, ru_en_model, ru_en_tokenizer, en_ru_model, en_ru_tokenizer, args)
         print("\nTranslation completed.")
         print(f"Translated text length: {len(translated_english)} characters")
 
